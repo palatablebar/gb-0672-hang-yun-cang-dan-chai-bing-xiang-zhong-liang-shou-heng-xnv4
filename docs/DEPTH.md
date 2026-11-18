@@ -13,6 +13,7 @@
 | M5 净毛重核验 | 执行并复核净毛重核验 | `POST /api/weight` | `app/modules/weight/rules.py` | `tests/test_weight.py` |
 | M6 报关对账 | 执行并复核报关对账 | `POST /api/reconcile` | `app/modules/reconcile/rules.py` | `tests/test_reconcile.py` |
 | M7 版本封存 | 执行并复核版本封存 | `POST /api/archive` | `app/modules/archive/rules.py` | `tests/test_archive.py` |
+| M8 封存恢复 | 从封存包恢复可回读副本 | `POST /api/recover/{package_id}` / `GET /recover` | `app/seals.py`、`app/recovery.py` | `tests/test_recovery.py` |
 
 ## 陷阱登记
 
@@ -29,6 +30,10 @@
 | TRAP-06 | 全角千分位 | 静默错算或证据丢失 | 以可复核规则显式处理 | `app/modules/packaging/rules.py` | `tests/test_packaging.py::test_fullwidth_decimal` |
 | TRAP-20 | 拆并依赖环 | 静默错算或证据丢失 | 以可复核规则显式处理 | `app/modules/grouping/rules.py` | `tests/test_grouping.py::test_cycle_real` |
 | TRAP-21 | 缺失父级 | 静默错算或证据丢失 | 以可复核规则显式处理 | `app/modules/grouping/rules.py` | `tests/test_grouping.py::test_missing_parent_real` |
+| TRAP-22 | 规则升级后重算冒充原件 | 直接按现规则重算并当作原封件提交 | 副本显式标注非原封件，逐字段与逐单对比原件，按可证明性裁决，件重或封签变化时判为不能冒充 | `app/seals.py`、`app/evidence.py` | `tests/test_recovery.py::test_recovery_rule_upgrade_cannot_stand_in_for_original` |
+| TRAP-23 | 恢复重试长出第二套副本 | 每次重试插入新副本 | 副本按封存包唯一，重试在原记录上更新，失败不销毁既有可用副本 | `app/seals.py`、`app/store.py` | `tests/test_recovery.py::test_retry_does_not_create_second_usable_copy`、`test_failed_retry_keeps_previous_usable_copy` |
+| TRAP-24 | 封存包被篡改仍被采信 | 只读包内容不校验 | 重算包标识并复算封签，不符即拒绝导入与恢复 | `app/seals.py`、`app/recovery.py` | `tests/test_recovery.py::test_tampered_bundle_never_yields_copy`、`test_bundle_export_import_roundtrip` |
+| TRAP-25 | 恢复失败丢掉旧封存件 | 用失败结果覆盖原件 | 失败只写恢复记录且 409，旧封存件与当前批次结果不变 | `app/seals.py` | `tests/test_recovery.py::test_failed_recovery_keeps_seal_and_current_result` |
 
 ## 对账规则
 

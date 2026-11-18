@@ -1,0 +1,96 @@
+{% macro rows_table(rows, labels) %}<div class="table-scroll"><table><thead><tr>{% if rows %}{% for k in rows[0] if k!='raw' %}<th>{{ labels.get(k,k) }}</th>{% endfor %}{% endif %}</tr></thead><tbody>{% for row in rows %}<tr>{% for k,v in row.items() if k!='raw' %}<td class="num" title="{{ v }}">{{ v }}</td>{% endfor %}</tr>{% else %}<tr><td>暂无记录。</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>封存恢复台 / 舱单校核室</title><link rel="stylesheet" href="/static/theme.css"><link rel="stylesheet" href="/static/layout.css"><link rel="stylesheet" href="/static/components.css"><link rel="stylesheet" href="/static/recover.css"></head>
+<body data-package-id="{{ package.package_id if package else '' }}" data-copy-id="{{ copy.copy_id if copy else '' }}" data-status="{{ copy.status if copy else '' }}">
+<div class="app"><aside class="rail"><div class="wordmark">CARGO<br>MANIFEST<sup>03</sup></div><div class="divider"></div><nav>{% for k in meta['keys'] %}<a href="/{{ k }}"><span>{{ loop.index }}.</span>{{ meta.modules[loop.index0] }}</a>{% endfor %}<a href="/recover" class="selected"><span>8.</span>恢复台</a></nav><div class="rail-bottom">船期 CN-1126<br>港区 / 北仑<br>恢复只在封存证据上进行</div></aside>
+<div class="work"><header class="topbar"><h1>封存恢复台</h1><span>存储故障 / 规则升级 / 申报时限</span><button id="print">打印</button></header><main class="content">
+{% if not package %}
+<section class="panel"><h2>封存包<sup>1</sup><small>{{ packages|length }} 个</small></h2>
+<p class="hint">选择已封存的舱单包执行恢复。恢复副本只从封存证据重算，不会改动旧封存件与当前结果。</p>
+{{ rows_table(packages, field_labels) }}
+</section>
+<section class="panel" style="margin-top:17px"><h2>恢复记录<sup>2</sup><small>{{ recoveries|length }} 条</small></h2>
+{{ rows_table(recoveries, field_labels) }}
+</section>
+<section class="panel" style="margin-top:17px"><h2>导入封存包</h2>
+<p class="hint">导入前核对包标识与封签，校验不通过会被拒绝，不会覆盖现有封存件。</p>
+<input type="file" id="bundle-file" accept=".zip,.json,application/zip,application/json"><output id="message" aria-live="polite"></output>
+</section>
+{% else %}
+<section class="kpis">
+<div class="kpi"><label>原批次</label><b class="small">{{ package.run_id }}</b></div>
+<div class="kpi"><label>原件封存状态</label><b class="small">{{ package.bundle.evidence.archive_status }}</b></div>
+<div class="kpi"><label>原件件数</label><b>{{ package.bundle.evidence.pieces }}</b></div>
+<div class="kpi"><label>原件净重 kg</label><b>{{ package.bundle.evidence.net_kg }}</b></div>
+<div class="kpi"><label>原件毛重 kg</label><b>{{ package.bundle.evidence.gross_kg }}</b></div>
+</section>
+
+<div class="sheet-grid recover-grid">
+<section class="panel index"><h2>原件来源<sup>1</sup></h2>
+<div class="kv"><label>包标识</label><span>{{ package.package_id }}</span></div>
+<div class="kv"><label>原规则版本</label><span>{{ package.rule_version }}</span></div>
+<div class="kv"><label>现规则版本</label><span>{{ current_rule_version }}</span></div>
+<div class="kv"><label>来源样例</label><span>{{ package.bundle.manifest.source }}</span></div>
+<div class="kv"><label>源摘要</label><span class="mono">{{ package.bundle.manifest.sha256[:24] }}</span></div>
+<div class="kv"><label>封存时间</label><span class="mono">{{ package.created_at }}</span></div>
+{% if current %}<div class="kv"><label>当前结果</label><span>{{ current.revision }} 版 / {{ current.status }}，{{ '与原件封签一致' if current.archive.seal==package.seal else '已偏离原件封签，恢复不改动它' }}</span></div>{% endif %}
+<div class="toolstrip stacked">
+<button id="do-recover" {% if copy and copy.status=='可用' %}disabled{% endif %}>{% if copy and copy.status=='可用' %}副本已可用{% else %}执行恢复{% endif %}</button>
+<a class="button" href="/api/seals/{{ package.package_id }}/bundle">下载封存件</a>
+{% if copy and copy.status=='可用' %}<a class="button" href="/api/recover/{{ copy.copy_id }}/export">回读副本包</a><a class="button" href="/api/recover/{{ copy.copy_id }}">副本 JSON</a>{% endif %}
+<a class="button" href="/recover">返回列表</a>
+</div>
+<output id="message" aria-live="polite"></output>
+</section>
+
+<section class="panel data-panel"><h2>原件与副本差异<sup>2</sup><small>{{ copy.comparison|length if copy else 0 }} 项</small></h2>
+{% if copy and copy.comparison %}
+<div class="table-scroll"><table><thead><tr><th>{{ field_labels.get('field','核验项') }}</th><th>原件</th><th>副本</th><th>差异</th></tr></thead><tbody>
+{% for row in copy.comparison %}<tr class="{% if row.changed %}changed{% endif %}"><td>{{ row.label }}</td><td class="num">{{ row.original }}</td><td class="num">{{ row.recovered if row.recovered is not none else '—' }}</td><td>{% if row.changed %}<span class="fail">已变</span>{% else %}一致{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif copy and copy.status!='可用' %}<p class="hint">恢复失败，无可比对副本。旧封存件与当前结果均已保留。</p>
+{% else %}<p class="hint">尚未生成恢复副本。</p>{% endif %}
+{% if copy and copy.row_comparison %}
+<h2 class="sub">逐单差异<sup>4</sup><small>{{ copy.row_comparison|length }} 处</small></h2>
+<div class="table-scroll"><table><thead><tr><th>提单编号</th><th>{{ field_labels.get('field','核验项') }}</th><th>原件</th><th>副本</th></tr></thead><tbody>
+{% for row in copy.row_comparison %}<tr class="changed"><td>{{ row.id }}</td><td>{{ row.label }}</td><td class="num">{{ row.original }}</td><td class="num">{{ row.recovered }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+{% if copy and copy.status=='可用' %}{% set rec = copy['copy'] %}
+<h2 class="sub">副本回读<sup>3</sup></h2>
+<div class="kv"><label>副本来源</label><span>由封存包 {{ copy.package_id }} 的原采信快照重算</span></div>
+<div class="kv"><label>副本批次</label><span class="mono">{{ rec.manifest.run_id }}</span></div>
+<div class="kv"><label>副本标识</label><span class="mono">{{ copy.copy_id }}</span></div>
+{{ rows_table(rec.views[rec.views.keys()|list|first].rows, field_labels) if rec.views else '' }}
+{% endif %}
+{% if copy and copy.last_failure %}<p class="hint fail">最近一次重试失败：{{ copy.last_failure.detail }}；上表为上一次成功副本，旧封存件未改动。</p>{% endif %}
+</section>
+
+<div class="right-column">
+<section class="panel"><h2>校验结果<sup>4</sup></h2>
+{% if copy %}
+<div class="checkline"><b>包标识重算</b><span>{{ '一致' if copy.integrity.intact else '不一致' }}</span><span class="{% if not copy.integrity.intact %}fail{% endif %}">{{ copy.integrity.package_id }}</span></div>
+<div class="checkline"><b>原封签复算</b><span>{{ '通过' if copy.integrity.seal_ok else '不通过' }}</span><span class="{% if not copy.integrity.seal_ok %}fail{% endif %}">{{ copy.integrity.seal_recomputed[:16] if copy.integrity.seal_recomputed else '—' }}</span></div>
+{% if copy.seals %}<div class="checkline"><b>原件封签</b><span class="mono">{{ copy.seals.original_seal[:16] }}</span><span>{{ '原件' }}</span></div>
+<div class="checkline"><b>副本封签</b><span class="mono">{{ copy.seals.copy_seal[:16] }}</span><span class="{% if not copy.seals.copy_matches_original %}fail{% endif %}">{{ '同原件' if copy.seals.copy_matches_original else '已变' }}</span></div>{% endif %}
+{% else %}<p class="hint">尚未执行恢复。</p>{% endif %}
+</section>
+
+<section class="panel"><h2>裁决<sup>5</sup></h2>
+{% if copy and copy.assessment %}
+<div class="verdict {{ copy.assessment.decision|lower }}">{{ copy.assessment.verdict }}</div>
+<p class="hint">{{ copy.assessment.basis }}</p>
+<div class="kv"><label>原规则环境</label><span>{{ '当前可用' if copy.assessment.original_environment_available else '不可用，需重建' }}</span></div>
+<h3>仍可证明</h3>
+{% for item in copy.assessment.provable %}<div class="proof"><b>{{ item.label }}</b><span>{{ item.value }}</span><small>{{ item.basis }}</small></div>{% else %}<p class="hint">无。</p>{% endfor %}
+<h3>不可证明</h3>
+{% for item in copy.assessment.unprovable %}<div class="proof bad"><b>{{ item.label }}</b><span>原件 {{ item.original }} / 副本 {{ item.recovered }}</span><small>{{ item.basis }}</small></div>{% else %}<p class="hint">无。</p>{% endfor %}
+{% elif copy and copy.error %}
+<div class="verdict rebuild_original_env">{{ copy.error.detail }}</div>
+<p class="hint">旧封存件 {{ copy.package_id }} 与当前批次结果均未改动；同一封存包重试不会新增第二套可用副本。</p>
+{% else %}<p class="hint">恢复后给出按业务结果的裁决。</p>{% endif %}
+</section>
+</div>
+</div>
+{% endif %}
+</main><footer class="statusbar"><span>RECOVERY {{ package.package_id if package else 'INDEX' }}</span><span>修订 2026.11 / UTC+08:00</span><a href="/docs">接口</a></footer></div></div>
+<script src="/static/recover.js" defer></script></body></html>

@@ -50,3 +50,4 @@ def export(run_id:str):
     return Response(serialize(result),media_type='application/zip',headers={'Content-Disposition':f'attachment; filename="{run_id}.zip"'})
 for key in MODULES:
     app.include_router(import_module(f'app.modules.{key}.handler').router)
+app.include_router(import_module('app.recovery').router)

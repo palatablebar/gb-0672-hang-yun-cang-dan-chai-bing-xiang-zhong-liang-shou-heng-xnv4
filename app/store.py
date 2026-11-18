@@ -8,6 +8,10 @@ def connect(path):
     con.row_factory=sqlite3.Row
     con.execute('PRAGMA journal_mode=WAL')
     con.execute("CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, result TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT '待复核')")
+    # 封存包独立于可重算批次保存，规则升级或批次重建都不会覆盖已封存证据。
+    con.execute("CREATE TABLE IF NOT EXISTS seals (package_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, seal TEXT NOT NULL, rule_version TEXT NOT NULL, bundle TEXT NOT NULL, created_at TEXT NOT NULL)")
+    # 每个封存包最多一套恢复副本：拷贝记录按 package_id 唯一，成功副本不被后续重试覆盖。
+    con.execute("CREATE TABLE IF NOT EXISTS recoveries (copy_id TEXT NOT NULL, package_id TEXT NOT NULL UNIQUE, run_id TEXT, status TEXT NOT NULL, rule_version TEXT NOT NULL, payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
     return con
 
 def save(path, result):
